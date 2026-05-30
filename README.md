@@ -63,7 +63,12 @@ GUI application with interactive temperature cloud map.
 5. Click **Show Cloud Map** to display temperature distribution
 6. Click **Start Auto-Refresh** for real-time continuous updates
 
-Unassigned grid points default to 0.
+You do not need to assign all grid points. Only assigned channels are used for interpolation:
+- **1 channel**: uniform color map at that temperature
+- **2 channels**: linear gradient between the two points
+- **3+ channels**: full cubic interpolation contour map
+
+Unassigned grid points are excluded from the calculation and shown as gray `+` markers.
 
 ```bash
 python t9110_cloudmap.py
