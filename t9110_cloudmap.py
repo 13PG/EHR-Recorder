@@ -206,75 +206,84 @@ class T9110CloudMap:
         return struct.unpack(">f", raw)[0]
 
     def _read_all(self):
-        rows, cols = self.grid_size
-        values = np.zeros((rows, cols))
+        channel_values = {}
         errors = []
         client = self._connect()
         try:
             for (r, c), ch in self.channel_map.items():
                 try:
-                    values[r][c] = self._read_channel(client, ch)
+                    channel_values[(r, c)] = self._read_channel(client, ch)
                 except Exception as e:
                     errors.append(str(e))
+                    channel_values[(r, c)] = None
         finally:
             client.close()
-        return values, errors
+        return channel_values, errors
 
     # ---- Rendering ----
 
-    def _render(self, values):
+    def _render(self, channel_values):
         self.fig.clear()
         ax = self.fig.add_subplot(111)
+        rows, cols = self.grid_size
 
-        rows, cols = values.shape
-        x = np.arange(cols)
-        y = np.arange(rows)
-        X, Y = np.meshgrid(x, y)
+        pts_x, pts_y, vals = [], [], []
+        for (r, c), v in channel_values.items():
+            if v is not None:
+                pts_x.append(c)
+                pts_y.append(r)
+                vals.append(v)
 
         xi = np.linspace(0, cols - 1, max(cols * 25, 100))
         yi = np.linspace(0, rows - 1, max(rows * 25, 100))
         Xi, Yi = np.meshgrid(xi, yi)
 
-        points = np.column_stack([X.ravel(), Y.ravel()])
-        vals = values.ravel()
+        n = len(vals)
+        if n == 0:
+            ax.set_title("No valid channel data")
+            self.map_canvas.draw()
+            return
 
-        Zi = None
-        for method in ("cubic", "linear", "nearest"):
-            try:
-                Zi = griddata(points, vals, (Xi, Yi), method=method)
-                if not np.all(np.isnan(Zi)):
-                    break
-            except Exception:
-                continue
-        if Zi is None:
-            Zi = np.zeros_like(Xi)
-
-        mask = np.isnan(Zi)
-        if mask.any():
-            Zi_fill = griddata(points, vals, (Xi, Yi), method="nearest")
-            Zi[mask] = Zi_fill[mask]
-
-        vmin, vmax = np.nanmin(vals), np.nanmax(vals)
+        vals_arr = np.array(vals)
+        vmin, vmax = vals_arr.min(), vals_arr.max()
         if vmin == vmax:
             vmin -= 1
             vmax += 1
 
+        if n == 1:
+            Zi = np.full_like(Xi, vals[0])
+        else:
+            points = np.column_stack([pts_x, pts_y])
+            for method in ("cubic", "linear", "nearest"):
+                try:
+                    Zi = griddata(points, vals_arr, (Xi, Yi), method=method)
+                    if not np.all(np.isnan(Zi)):
+                        break
+                except Exception:
+                    continue
+            mask = np.isnan(Zi)
+            if mask.any():
+                Zi_fill = griddata(points, vals_arr, (Xi, Yi), method="nearest")
+                Zi[mask] = Zi_fill[mask]
+
         levels = np.linspace(vmin, vmax, 30)
         cf = ax.contourf(Xi, Yi, Zi, levels=levels, cmap="jet", extend="both")
-        ax.contour(Xi, Yi, Zi, levels=10, colors="white", linewidths=0.4, alpha=0.5)
+        if n > 1:
+            ax.contour(Xi, Yi, Zi, levels=10, colors="white", linewidths=0.4, alpha=0.5)
         self.fig.colorbar(cf, ax=ax, label="Temperature (\u00b0C)", shrink=0.9, pad=0.02)
 
         for (r, c), ch in self.channel_map.items():
-            v = values[r][c]
-            ax.plot(c, r, "ko", markersize=7, zorder=5)
-            ax.annotate(
-                f"CH{ch}\n{v:.1f}\u00b0C",
-                (c, r),
-                textcoords="offset points", xytext=(10, 8),
-                fontsize=8, fontweight="bold", color="white",
-                bbox=dict(boxstyle="round,pad=0.3", fc="black", alpha=0.75),
-                zorder=6,
-            )
+            v = channel_values.get((r, c))
+            if v is not None:
+                ax.plot(c, r, "ko", markersize=7, zorder=5)
+                ax.annotate(
+                    f"CH{ch}\n{v:.1f}\u00b0C",
+                    (c, r),
+                    textcoords="offset points", xytext=(10, 8),
+                    fontsize=8, fontweight="bold", color="white",
+                    bbox=dict(boxstyle="round,pad=0.3", fc="black", alpha=0.75),
+                    zorder=6,
+                )
 
         for r in range(rows):
             for c in range(cols):
