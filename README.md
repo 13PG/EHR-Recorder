@@ -51,24 +51,56 @@ Each channel occupies 2 consecutive 16-bit registers. The data is decoded as a 3
 
 ## Components
 
-### t9110_cloudmap.py - Cloud Map Visualization (Main Application)
+### t9110_cloudmap.py - 1D Fire-Flood Simulation Monitor (Main Application)
 
-GUI application with interactive temperature cloud map.
+Single full-screen dashboard. Every functional area is laid out directly on
+one page (no navigation pages, no popups). The window opens maximized so all
+areas are visible at once. The Modbus acquisition core (word-swapped float
+decode) and scipy interpolation are unchanged from the original program; only
+the visualization / layout was redesigned.
+
+**Layout:**
+- **Left - parameters:** communication config (port / baud / address /
+  refresh interval, edited inline at the top), Basic Parameters (live, read
+  only: pipe-wall temperatures T8/T9, injection pressure P1, production
+  pressure P2), Other Parameters (operator-entered: core porosity /
+  permeability / reserved, with a Modify button).
+- **Right, top - cloud map:** the 1D fire-flood device drawn directly in the
+  figure (pipe body, end flanges, inlet/outlet nozzles, the 7 numbered
+  measurement points, and P1/P2 at the ends). The empty device frame is shown
+  from startup; **Start Render** fills the interpolated colour cloud inside
+  the pipe body and shows each point's value. Start Render / Stop Render
+  buttons are below it.
+- **Right, bottom - personalized display:** per-channel toggle buttons that
+  plot each channel's value-vs-time curve, plus an Export button.
+
+**Fixed channel mapping:**
+
+| Display | Channel | Meaning |
+|---------|---------|---------|
+| T1 - T7 | CH1 - CH7 | Internal pipe temperatures (interpolated cloud map) |
+| T8, T9  | CH8, CH9  | Pipe-wall temperatures (external) |
+| P1      | CH10      | Injection / inlet pressure |
+| P2      | CH11      | Production / outlet pressure |
 
 **Usage:**
-1. Set communication parameters (port, baud rate, address)
-2. Select cloud map scale (X x Y)
-3. Click **Create Grid** to generate grid points
-4. Click on grid cells to assign channel numbers (1-18)
-5. Click **Show Cloud Map** to display temperature distribution
-6. Click **Start Auto-Refresh** for real-time continuous updates
+1. Adjust communication parameters at the top right if needed (defaults
+   COM3 / 9600 / address 1).
+2. Click **Start Render**. The button greys out; only **Stop Render** can
+   re-enable it. The personalized chart is cleared at the start of each
+   render session.
+3. The pipe cloud map and per-channel curves update in real time at the
+   configured interval.
+4. Missing channels are filled in by interpolation on the cloud map; an error
+   popup appears only when **every** channel fails to read (e.g. wrong comm
+   config).
+5. Click **Export** to save all channels' real-time data to an Excel file,
+   one sub-sheet per channel.
+6. Click **Stop Render** to pause real-time updates.
 
-You do not need to assign all grid points. Only assigned channels are used for interpolation:
-- **1 channel**: uniform color map at that temperature
-- **2 channels**: linear gradient between the two points
-- **3+ channels**: full cubic interpolation contour map
-
-Unassigned grid points are excluded from the calculation and shown as gray `+` markers.
+The 7 internal temperature points sit at fixed zig-zag positions along the
+pipe and are combined by interpolation into a single cloud map; pipe-wall
+temperatures and the two pressures are shown outside the pipe.
 
 ```bash
 python t9110_cloudmap.py
@@ -97,7 +129,7 @@ python t9110_diag.py
 - Python 3.8+
 
 ```bash
-pip install pymodbus pyserial numpy matplotlib scipy
+pip install pymodbus pyserial numpy matplotlib scipy openpyxl
 ```
 
 ### Build EXE
